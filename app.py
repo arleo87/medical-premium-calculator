@@ -41,13 +41,21 @@ def calculate_inflated_premiums(premiums, inflation_rate, years):
 
 # Calculate 5-year averages
 def calculate_5year_averages(premiums):
+    """Calculate 5-year averages starting from the 6th year"""
+    if len(premiums) < 6:  # Need at least 6 years of data
+        return []
+    
+    # Start from 6th year (index 5)
+    remaining_premiums = premiums[5:]
+    
+    # Calculate averages for each 5-year period
     averages = []
-    premiums = [round(p) for p in premiums]  # Round input premiums
-    for i in range(0, len(premiums)-4, 5):
-        five_year_slice = premiums[i:i+5]
-        if len(five_year_slice) == 5:
+    for i in range(0, len(remaining_premiums), 5):
+        five_year_slice = remaining_premiums[i:i+5]
+        if len(five_year_slice) == 5:  # Only include complete 5-year periods
             avg = round(sum(five_year_slice) / 5)
             averages.append(avg)
+    
     return averages
 
 # Create an empty premium table template from age 0 to 99
@@ -381,7 +389,7 @@ def main():
             # 5-Year Average Premiums
             with st.expander("每5年平均保費", expanded=True):
                 avg_premiums = calculate_5year_averages(plan1_premiums)
-                age_ranges = [f"{i}-{i+4}" for i in range(current_age+6, current_age+6+len(avg_premiums)*5, 5)]
+                age_ranges = [f"{i}-{i+4}" for i in range(current_age+5, current_age+5+len(avg_premiums)*5, 5)]
                 avg_table = pd.DataFrame({
                     'Age Range': age_ranges,
                     'Original': [f"{currency.split()[0]} {p:,.0f}" for p in avg_premiums]
@@ -440,7 +448,7 @@ def main():
                 # 5-Year Average Premiums
                 with st.expander("每5年平均保費", expanded=True):
                     avg_premiums = calculate_5year_averages(plan2_premiums)
-                    age_ranges = [f"{i}-{i+4}" for i in range(current_age+6, current_age+6+len(avg_premiums)*5, 5)]
+                    age_ranges = [f"{i}-{i+4}" for i in range(current_age+5, current_age+5+len(avg_premiums)*5, 5)]
                     avg_table = pd.DataFrame({
                         'Age Range': age_ranges,
                         'Original': [f"{currency.split()[0]} {p:,.0f}" for p in avg_premiums]
@@ -522,7 +530,7 @@ def main():
                 # Combined 5-Year Average Premiums
                 with st.expander("每5年平均保費", expanded=True):
                     avg_premiums = calculate_5year_averages(combined_premiums)
-                    age_ranges = [f"{i}-{i+4}" for i in range(current_age+6, current_age+6+len(avg_premiums)*5, 5)]
+                    age_ranges = [f"{i}-{i+4}" for i in range(current_age+5, current_age+5+len(avg_premiums)*5, 5)]
                     avg_table = pd.DataFrame({
                         'Age Range': age_ranges,
                         'Original': [f"{currency.split()[0]} {p:,.0f}" for p in avg_premiums]
