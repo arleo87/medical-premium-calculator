@@ -77,7 +77,7 @@ def get_premiums(df, plan_name, current_age, max_age):
     return [round(p) for p in premiums]
 
 # Calculate savings plan
-def calculate_savings_plan(annual_saving, current_age, premiums, inflated_premiums=None, interest_rate=0.05):
+def calculate_savings_plan(annual_saving, current_age, premiums, inflated_premiums=None, interest_rate=0.05, withdrawal_at_65=0):
     """
     Calculate the savings plan with compound interest and premium withdrawals
     
@@ -87,62 +87,55 @@ def calculate_savings_plan(annual_saving, current_age, premiums, inflated_premiu
     premiums: List of annual premiums starting from current_age
     inflated_premiums: List of inflated premiums (if inflation rate > 0)
     interest_rate: Annual interest rate (default 5%)
+    withdrawal_at_65: One-time withdrawal amount at age 65
     
     Returns:
     Tuple of (results list, boolean indicating if savings are insufficient)
     """
     results = []
-    balance = 0
-    saving_years = 5
+    savings = 0
     insufficient = False
+    premiums_to_use = inflated_premiums if inflated_premiums is not None else premiums
     
-    # First 5 years: Saving period
-    for year in range(saving_years):
+    for year in range(len(premiums_to_use)):
         age = current_age + year
-        balance += annual_saving
         
-        results.append({
-            'Age': age,
-            'Year': year + 1,
-            'Savings': annual_saving,
-            'Interest': 0,
-            'Premium': 0,
-            'Balance': balance
-        })
-    
-    # After 5 years: Interest accrual and premium withdrawals
-    for year in range(saving_years, len(premiums)):
-        age = current_age + year
-        # Calculate interest first (only if balance is positive)
-        interest = max(0, balance * interest_rate)
-        balance += interest
+        # Apply interest to current savings
+        interest = savings * interest_rate
+        
+        # Add annual saving for first 5 years
+        saving_this_year = annual_saving if year < 5 else 0
         
         # Withdraw premium
-        premium = inflated_premiums[year] if inflated_premiums else premiums[year]
+        premium_withdrawal = premiums_to_use[year]
         
-        # Check if balance will be insufficient
-        if balance < premium:
+        # Additional withdrawal at age 65
+        age_65_withdrawal = withdrawal_at_65 if age == 65 else 0
+        
+        # Calculate new savings
+        new_savings = savings + interest + saving_this_year - premium_withdrawal - age_65_withdrawal
+        
+        # Record if savings become insufficient
+        if new_savings < 0 and not insufficient:
             insufficient = True
-            # Set withdrawal to remaining balance
-            actual_premium = balance
-            balance = 0
-        else:
-            actual_premium = premium
-            balance -= premium
         
+        # Store results
         results.append({
             'Age': age,
-            'Year': year + 1,
-            'Savings': 0,
+            'Start': round(savings),
             'Interest': round(interest),
-            'Premium': actual_premium,
-            'Balance': round(balance)
+            'Saving': round(saving_this_year),
+            'Premium': round(premium_withdrawal),
+            'Age65': round(age_65_withdrawal),
+            'End': round(new_savings)
         })
+        
+        savings = new_savings
     
     return results, insufficient
 
 # Calculate minimum savings
-def calculate_minimum_savings(current_age, premiums, inflated_premiums=None, interest_rate=0.05):
+def calculate_minimum_savings(current_age, premiums, inflated_premiums=None, interest_rate=0.05, withdrawal_at_65=0):
     """
     Calculate the minimum annual savings needed to cover all future premiums
     
@@ -151,26 +144,24 @@ def calculate_minimum_savings(current_age, premiums, inflated_premiums=None, int
     premiums: List of annual premiums starting from current_age
     inflated_premiums: List of inflated premiums (if inflation rate > 0)
     interest_rate: Annual interest rate (default 5%)
+    withdrawal_at_65: One-time withdrawal amount at age 65
     
     Returns:
     Minimum annual savings needed
     """
-    # Binary search to find minimum savings
-    min_savings = 0
-    max_savings = max(premiums) * 2  # Start with a reasonable upper bound
-    target_savings = None
+    min_saving = 0
+    max_saving = max(premiums) * 2  # Start with a reasonable upper bound
     
-    while min_savings <= max_savings:
-        test_savings = (min_savings + max_savings) // 2
-        results, insufficient = calculate_savings_plan(test_savings, current_age, premiums, inflated_premiums, interest_rate)
+    while max_saving - min_saving > 1:  # Binary search with precision of 1
+        mid = (min_saving + max_saving) / 2
+        results, insufficient = calculate_savings_plan(mid, current_age, premiums, inflated_premiums, interest_rate, withdrawal_at_65)
         
         if insufficient:
-            min_savings = test_savings + 1
+            min_saving = mid
         else:
-            target_savings = test_savings
-            max_savings = test_savings - 1
+            max_saving = mid
     
-    return target_savings if target_savings is not None else max_savings + 1
+    return round(max_saving)
 
 # Calculate total premium to age
 def calculate_total_premium_to_age(premiums, current_age, target_age):
@@ -547,22 +538,38 @@ def main():
         The plan involves saving for 5 years, followed by interest accrual and premium withdrawals.
         """)
         
-        # Saving inputs
-        saving_col1, saving_col2 = st.columns(2)
+        # Savings inputs
+        st.markdown("""
+        <style>
+        div[data-testid="stNumberInput"] > div > div > div > input {
+            width: 100%;
+        }
+        </style>
+        """, unsafe_allow_html=True)
         
+        # Set default saving amount based on currency
+        default_saving = 10000 if currency == "USD " else 80000
+        
+        saving_col1, saving_col2 = st.columns(2)
         with saving_col1:
-            # Set default saving amount based on currency
-            default_saving = 10000 if currency == "USD " else 80000
             annual_saving = st.number_input(
-                "Annual Saving Amount ",
+                "Annual Saving for First 5 Years",
                 min_value=0,
                 value=default_saving,
                 step=1000,
-                help="Amount to save each year for the first 5 years"
+                key='annual_saving'
             )
             
             st.write(f"Total Savings after 5 years: {currency.split()[0]} {annual_saving * 5:,.0f}")
             
+            withdrawal_at_65 = st.number_input(
+                "Once off withdrawal at 65",
+                min_value=0,
+                value=0,
+                step=1000,
+                key='withdrawal_65'
+            )
+        
         with saving_col2:
             st.info("""
             **Plan Structure:**
@@ -587,12 +594,16 @@ def main():
                 premiums_to_use = plan1_premiums
                 inflated_premiums = plan1_inflated if inflation_rate > 0 else None
             
-            savings_results, insufficient = calculate_savings_plan(
-                annual_saving,
-                current_age,
-                premiums_to_use,
-                inflated_premiums
-            )
+            total_savings = annual_saving * 5
+            
+            # Calculate minimum annual savings needed
+            min_savings = calculate_minimum_savings(current_age, premiums_to_use, inflated_premiums, 
+                                                 withdrawal_at_65=withdrawal_at_65)
+            
+            # Calculate savings plan
+            savings_results, insufficient = calculate_savings_plan(annual_saving, current_age, premiums_to_use, 
+                                                               inflated_premiums,
+                                                               withdrawal_at_65=withdrawal_at_65)
             
             # Display warning if savings are insufficient
             if insufficient:
@@ -600,7 +611,8 @@ def main():
                 min_required_savings = calculate_minimum_savings(
                     current_age,
                     premiums_to_use,
-                    inflated_premiums
+                    inflated_premiums,
+                    withdrawal_at_65=withdrawal_at_65
                 )
                 
                 st.error(f"""
@@ -617,7 +629,7 @@ def main():
             total_savings = annual_saving * 5
             total_interest = sum([float(result['Interest']) for result in savings_results])
             total_premiums = sum([float(result['Premium']) for result in savings_results])
-            final_balance = float(savings_results[-1]['Balance'])
+            final_balance = float(savings_results[-1]['End'])
             
             # Display summary metrics
             st.subheader("Summary")
@@ -648,7 +660,7 @@ def main():
             # Add Annual Savings bars (green)
             fig.add_trace(go.Bar(
                 x=[str(age) for age in range(current_age, current_age + len(savings_results))],
-                y=[float(s.replace(currency.split()[0], '').replace(',', '')) for s in [f"{currency.split()[0]} {result['Savings']:,.0f}" for result in savings_results]],
+                y=[float(s.replace(currency.split()[0], '').replace(',', '')) for s in [f"{currency.split()[0]} {result['Saving']:,.0f}" for result in savings_results]],
                 name='Annual Savings',
                 marker_color='rgba(75, 192, 75, 0.7)',  # Green
                 hovertemplate=currency + ' %{y:,.0f}<br>Age: %{x}<extra></extra>'
@@ -672,12 +684,21 @@ def main():
                 hovertemplate=currency + ' %{y:,.0f}<br>Age: %{x}<extra></extra>'
             ))
             
-            # Add Balance line (purple) on secondary y-axis
+            # Add Age 65 Withdrawal bars (purple)
+            fig.add_trace(go.Bar(
+                x=[str(age) for age in range(current_age, current_age + len(savings_results))],
+                y=[float(a.replace(currency.split()[0], '').replace(',', '')) for a in [f"{currency.split()[0]} {result['Age65']:,.0f}" for result in savings_results]],
+                name='Age 65 Withdrawal',
+                marker_color='rgba(156, 39, 176, 0.7)',  # Purple
+                hovertemplate=currency + ' %{y:,.0f}<br>Age: %{x}<extra></extra>'
+            ))
+            
+            # Add Balance line (black) on secondary y-axis
             fig.add_trace(go.Scatter(
                 x=[str(age) for age in range(current_age, current_age + len(savings_results))],
-                y=[float(b.replace(currency.split()[0], '').replace(',', '')) for b in [f"{currency.split()[0]} {result['Balance']:,.0f}" for result in savings_results]],
+                y=[float(b.replace(currency.split()[0], '').replace(',', '')) for b in [f"{currency.split()[0]} {result['End']:,.0f}" for result in savings_results]],
                 name='Balance',
-                line=dict(color='rgba(156, 39, 176, 1)', width=3),  # Purple
+                line=dict(color='rgba(0, 0, 0, 1)', width=3),  # Black
                 yaxis='y2',
                 hovertemplate=currency + ' %{y:,.0f}<br>Age: %{x}<extra></extra>'
             ))
@@ -723,12 +744,11 @@ def main():
             # Create detailed breakdown table
             df_savings = pd.DataFrame(savings_results)
             
-            # Convert Age and Year to strings to ensure left alignment
+            # Convert Age to strings to ensure left alignment
             df_savings['Age'] = df_savings['Age'].astype(str)
-            df_savings['Year'] = df_savings['Year'].astype(str)
             
             # Format currency values for display
-            for col in ['Savings', 'Interest', 'Premium', 'Balance']:
+            for col in ['Start', 'Interest', 'Saving', 'Premium', 'Age65', 'End']:
                 df_savings[col] = df_savings[col].apply(lambda x: f"{currency.split()[0]} {x:,.0f}")
             
             # Add CSS for table alignment
@@ -753,11 +773,12 @@ def main():
                 hide_index=True,
                 column_config={
                     'Age': st.column_config.TextColumn('Age ', help="Current age"),
-                    'Year': st.column_config.TextColumn('Year ', help="Calendar year"),
-                    'Savings': st.column_config.TextColumn('Savings ', help="Amount saved during the year"),
+                    'Start': st.column_config.TextColumn('Start ', help="Year-start balance"),
                     'Interest': st.column_config.TextColumn('Interest ', help="Interest earned during the year"),
+                    'Saving': st.column_config.TextColumn('Saving ', help="Amount saved during the year"),
                     'Premium': st.column_config.TextColumn('Premium ', help="Premium paid during the year"),
-                    'Balance': st.column_config.TextColumn('Balance ', help="Year-end balance")
+                    'Age65': st.column_config.TextColumn('Age 65 Withdrawal ', help="One-time withdrawal at age 65"),
+                    'End': st.column_config.TextColumn('End ', help="Year-end balance")
                 }
             )
 
