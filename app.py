@@ -90,34 +90,47 @@ def calculate_savings_plan(annual_saving, current_age, premiums, inflated_premiu
     withdrawal_at_65: One-time withdrawal amount at age 65
     
     Returns:
-    Tuple of (results list, boolean indicating if savings are insufficient)
+    Tuple of (results list, boolean indicating if savings are insufficient, age when insufficient, withdrawal amount that couldn't be fully made)
     """
     results = []
     savings = 0
     insufficient = False
+    insufficient_age = None
+    insufficient_amount = None
     premiums_to_use = inflated_premiums if inflated_premiums is not None else premiums
     
     for year in range(len(premiums_to_use)):
         age = current_age + year
         
-        # Apply interest to current savings
-        interest = savings * interest_rate
+        # Apply interest starting from year 6
+        interest = savings * interest_rate if year >= 5 else 0
         
         # Add annual saving for first 5 years
         saving_this_year = annual_saving if year < 5 else 0
         
-        # Withdraw premium
-        premium_withdrawal = premiums_to_use[year]
+        # Calculate available balance before withdrawals
+        available_balance = savings + interest + saving_this_year
         
-        # Additional withdrawal at age 65
+        # Calculate withdrawals
+        premium_withdrawal = premiums_to_use[year]
         age_65_withdrawal = withdrawal_at_65 if age == 65 else 0
+        total_withdrawal = premium_withdrawal + age_65_withdrawal
+        
+        # Check if withdrawal would make balance negative
+        if total_withdrawal > available_balance:
+            if not insufficient:
+                insufficient = True
+                insufficient_age = age
+                insufficient_amount = total_withdrawal - available_balance
+            # Adjust withdrawal to available balance
+            if premium_withdrawal > available_balance:
+                premium_withdrawal = available_balance
+                age_65_withdrawal = 0
+            else:
+                age_65_withdrawal = min(age_65_withdrawal, available_balance - premium_withdrawal)
         
         # Calculate new savings
-        new_savings = savings + interest + saving_this_year - premium_withdrawal - age_65_withdrawal
-        
-        # Record if savings become insufficient
-        if new_savings < 0 and not insufficient:
-            insufficient = True
+        new_savings = available_balance - premium_withdrawal - age_65_withdrawal
         
         # Store results
         results.append({
@@ -132,7 +145,7 @@ def calculate_savings_plan(annual_saving, current_age, premiums, inflated_premiu
         
         savings = new_savings
     
-    return results, insufficient
+    return results, insufficient, insufficient_age, insufficient_amount
 
 # Calculate minimum savings
 def calculate_minimum_savings(current_age, premiums, inflated_premiums=None, interest_rate=0.05, withdrawal_at_65=0):
@@ -154,7 +167,7 @@ def calculate_minimum_savings(current_age, premiums, inflated_premiums=None, int
     
     while max_saving - min_saving > 1:  # Binary search with precision of 1
         mid = (min_saving + max_saving) / 2
-        results, insufficient = calculate_savings_plan(mid, current_age, premiums, inflated_premiums, interest_rate, withdrawal_at_65)
+        results, insufficient, _, _ = calculate_savings_plan(mid, current_age, premiums, inflated_premiums, interest_rate, withdrawal_at_65)
         
         if insufficient:
             min_saving = mid
@@ -601,7 +614,7 @@ def main():
                                                  withdrawal_at_65=withdrawal_at_65)
             
             # Calculate savings plan
-            savings_results, insufficient = calculate_savings_plan(annual_saving, current_age, premiums_to_use, 
+            savings_results, insufficient, insufficient_age, insufficient_amount = calculate_savings_plan(annual_saving, current_age, premiums_to_use, 
                                                                inflated_premiums,
                                                                withdrawal_at_65=withdrawal_at_65)
             
@@ -623,6 +636,8 @@ def main():
                 
                 Minimum required annual savings: {currency.split()[0]} {min_required_savings:,.0f}
                 Additional savings needed: {currency.split()[0]} {(min_required_savings - annual_saving):,.0f} per year
+                Insufficient at age: {insufficient_age}
+                Amount that couldn't be fully withdrawn: {currency.split()[0]} {insufficient_amount:,.0f}
                 """)
             
             # Calculate key metrics
@@ -644,7 +659,7 @@ def main():
                          f"{currency.split()[0]} {total_interest:,.0f}")
             
             with metric_col3:
-                st.metric("Total Premiums ",
+                st.metric("Total Withdrawal for Medical ",
                          f"{currency.split()[0]} {total_premiums:,.0f}")
             
             with metric_col4:
@@ -679,7 +694,7 @@ def main():
             fig.add_trace(go.Bar(
                 x=[str(age) for age in range(current_age, current_age + len(savings_results))],
                 y=[float(p.replace(currency.split()[0], '').replace(',', '')) for p in [f"{currency.split()[0]} {result['Premium']:,.0f}" for result in savings_results]],
-                name='Premium Paid',
+                name='Withdrawal for Medical Premium',
                 marker_color='rgba(234, 67, 53, 0.7)',  # Red
                 hovertemplate=currency + ' %{y:,.0f}<br>Age: %{x}<extra></extra>'
             ))
@@ -776,7 +791,7 @@ def main():
                     'Start': st.column_config.TextColumn('Start ', help="Year-start balance"),
                     'Interest': st.column_config.TextColumn('Interest ', help="Interest earned during the year"),
                     'Saving': st.column_config.TextColumn('Saving ', help="Amount saved during the year"),
-                    'Premium': st.column_config.TextColumn('Premium ', help="Premium paid during the year"),
+                    'Premium': st.column_config.TextColumn('Withdrawal for Medical Premium ', help="Premium paid during the year"),
                     'Age65': st.column_config.TextColumn('Age 65 Withdrawal ', help="One-time withdrawal at age 65"),
                     'End': st.column_config.TextColumn('End ', help="Year-end balance")
                 }
