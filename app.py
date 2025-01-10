@@ -351,27 +351,22 @@ def main():
                     f"{current_age} to 99"
                 ]
                 
-                target_ages = [65, 75, 85, 99]
-                current_totals = []
-                projected_totals = []
-                
-                for target_age in target_ages:
-                    years = target_age - current_age if target_age > current_age else 0
-                    current_total = sum(premiums[:years])
-                    current_totals.append(current_total)
-                    
-                    if inflated_premiums:
-                        projected_total = sum(inflated_premiums[:years])
-                        projected_totals.append(projected_total)
-                
                 data = {
                     'Age Range': age_ranges,
-                    'Current Premium': [f"{currency.split()[0]} {total:,.0f}" for total in current_totals]
+                    f'Current Premium ({currency.strip()})': [
+                        f"{calculate_total_premium_to_age(premiums, current_age, 65):,.0f}",
+                        f"{calculate_total_premium_to_age(premiums, current_age, 75):,.0f}",
+                        f"{calculate_total_premium_to_age(premiums, current_age, 85):,.0f}",
+                        f"{calculate_total_premium_to_age(premiums, current_age, 99):,.0f}"
+                    ]
                 }
                 
-                if inflated_premiums:
-                    data['Projected Premium ({}% Inflation)'.format(inflation_rate)] = [
-                        f"{currency.split()[0]} {total:,.0f}" for total in projected_totals
+                if inflated_premiums is not None:
+                    data[f'Projected Premium ({currency.strip()}) ({inflation_rate}% inflation)'] = [
+                        f"{calculate_total_premium_to_age(inflated_premiums, current_age, 65):,.0f}",
+                        f"{calculate_total_premium_to_age(inflated_premiums, current_age, 75):,.0f}",
+                        f"{calculate_total_premium_to_age(inflated_premiums, current_age, 85):,.0f}",
+                        f"{calculate_total_premium_to_age(inflated_premiums, current_age, 99):,.0f}"
                     ]
                 
                 return pd.DataFrame(data)
@@ -384,10 +379,10 @@ def main():
             with st.expander("保費表", expanded=True):
                 premium_table = pd.DataFrame({
                     'Age': [str(age) for age in range(current_age, max_age)],
-                    'Original': [f"{currency.split()[0]} {p:,.0f}" for p in plan1_premiums]
+                    f'Original ({currency.strip()})': [f"{p:,.0f}" for p in plan1_premiums]
                 })
                 if inflation_rate > 0:
-                    premium_table['Inflated'] = [f"{currency.split()[0]} {p:,.0f}" for p in plan1_inflated]
+                    premium_table[f'Inflated ({currency.strip()})'] = [f"{p:,.0f}" for p in plan1_inflated]
                 st.dataframe(premium_table, use_container_width=True, hide_index=True)
 
             # 5-Year Average Premiums
@@ -396,11 +391,11 @@ def main():
                 age_ranges = [f"{i}-{i+4}" for i in range(current_age+5, current_age+5+len(avg_premiums)*5, 5)]
                 avg_table = pd.DataFrame({
                     'Age Range': age_ranges,
-                    'Original': [f"{currency.split()[0]} {p:,.0f}" for p in avg_premiums]
+                    f'Original ({currency.strip()})': [f"{p:,.0f}" for p in avg_premiums]
                 })
                 if inflation_rate > 0:
                     avg_inflated = calculate_5year_averages(plan1_inflated)
-                    avg_table['Inflated'] = [f"{currency.split()[0]} {p:,.0f}" for p in avg_inflated]
+                    avg_table[f'Inflated ({currency.strip()})'] = [f"{p:,.0f}" for p in avg_inflated]
                 st.dataframe(avg_table, use_container_width=True, hide_index=True)
 
         # Column 2: Plan 2 (if selected)
@@ -443,10 +438,10 @@ def main():
                 with st.expander("保費表", expanded=True):
                     premium_table = pd.DataFrame({
                         'Age': [str(age) for age in range(current_age, max_age)],
-                        'Original': [f"{currency.split()[0]} {p:,.0f}" for p in plan2_premiums]
+                        f'Original ({currency.strip()})': [f"{p:,.0f}" for p in plan2_premiums]
                     })
                     if inflation_rate > 0:
-                        premium_table['Inflated'] = [f"{currency.split()[0]} {p:,.0f}" for p in plan2_inflated]
+                        premium_table[f'Inflated ({currency.strip()})'] = [f"{p:,.0f}" for p in plan2_inflated]
                     st.dataframe(premium_table, use_container_width=True, hide_index=True)
 
                 # 5-Year Average Premiums
@@ -455,11 +450,11 @@ def main():
                     age_ranges = [f"{i}-{i+4}" for i in range(current_age+5, current_age+5+len(avg_premiums)*5, 5)]
                     avg_table = pd.DataFrame({
                         'Age Range': age_ranges,
-                        'Original': [f"{currency.split()[0]} {p:,.0f}" for p in avg_premiums]
+                        f'Original ({currency.strip()})': [f"{p:,.0f}" for p in avg_premiums]
                     })
                     if inflation_rate > 0:
                         avg_inflated = calculate_5year_averages(plan2_inflated)
-                        avg_table['Inflated'] = [f"{currency.split()[0]} {p:,.0f}" for p in avg_inflated]
+                        avg_table[f'Inflated ({currency.strip()})'] = [f"{p:,.0f}" for p in avg_inflated]
                     st.dataframe(avg_table, use_container_width=True, hide_index=True)
 
         # Column 3: Combined (if Plan 2 is selected)
@@ -525,10 +520,10 @@ def main():
                 with st.expander("保費表", expanded=True):
                     combined_table = pd.DataFrame({
                         'Age': [str(age) for age in ages_combined],
-                        'Original': [f"{currency.split()[0]} {p:,.0f}" for p in combined_premiums]
+                        f'Original ({currency.strip()})': [f"{p:,.0f}" for p in combined_premiums]
                     })
                     if inflation_rate > 0:
-                        combined_table['Inflated'] = [f"{currency.split()[0]} {p:,.0f}" for p in combined_inflated]
+                        combined_table[f'Inflated ({currency.strip()})'] = [f"{p:,.0f}" for p in combined_inflated]
                     st.dataframe(combined_table, use_container_width=True, hide_index=True)
 
                 # Combined 5-Year Average Premiums
@@ -537,11 +532,11 @@ def main():
                     age_ranges = [f"{i}-{i+4}" for i in range(current_age+5, current_age+5+len(avg_premiums)*5, 5)]
                     avg_table = pd.DataFrame({
                         'Age Range': age_ranges,
-                        'Original': [f"{currency.split()[0]} {p:,.0f}" for p in avg_premiums]
+                        f'Original ({currency.strip()})': [f"{p:,.0f}" for p in avg_premiums]
                     })
                     if inflation_rate > 0:
                         avg_inflated = calculate_5year_averages(combined_inflated)
-                        avg_table['Inflated'] = [f"{currency.split()[0]} {p:,.0f}" for p in avg_inflated]
+                        avg_table[f'Inflated ({currency.strip()})'] = [f"{p:,.0f}" for p in avg_inflated]
                     st.dataframe(avg_table, use_container_width=True, hide_index=True)
 
     with tab2:
