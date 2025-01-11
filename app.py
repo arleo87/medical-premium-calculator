@@ -18,7 +18,7 @@ st.set_page_config(
 )
 
 # Load data function
-@st.cache_data
+@st.cache_data(ttl=1)  # Cache will expire after 1 second
 def load_data(gender):
     try:
         df = pd.read_excel('premiumtable.xlsx', sheet_name=gender.lower())
