@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 
-def calculate_saving_plan(saving_amount=10000):  # Default 10,000 USD
+def calculate_saving_plan(saving_amount=10000, withdrawal_start_year=6, withdrawal_start_age=None, fixed_withdrawal_percentage=None):  
     # Read the logic CSV file for bonus calculations
     logic_df = pd.read_csv('logic.csv')
     
@@ -103,18 +103,31 @@ def calculate_saving_plan(saving_amount=10000):  # Default 10,000 USD
         else:
             rev_bonus_before_withdrawal = 0
         
-        # Calculate withdrawal (only after year 5)
+        # Calculate withdrawal (start from specified year)
         withdrawal = 0
         remaining_withdrawal = 0  # Initialize remaining withdrawal
         sb_deduction = 0  # Initialize special bonus deduction
         gcv_withdrawal = 0  # Initialize GCV withdrawal
         
-        if year > 5:  # Start withdrawals after year 5
-            # Get premium for current year from the premium table
-            # Policy year is one less than the index year
-            policy_year = year - 1  # This will be 5 for index year 6, 6 for index year 7, etc.
-            if policy_year < len(premiums_to_use):
-                withdrawal = premiums_to_use[policy_year]
+        # Calculate total premium paid (5 years of savings)
+        total_premium_paid = saving_amount * 5
+        
+        # Determine if withdrawal should start based on year or age
+        should_withdraw = False
+        if withdrawal_start_age is not None:
+            should_withdraw = age >= withdrawal_start_age
+        else:
+            should_withdraw = year >= withdrawal_start_year
+            
+        if should_withdraw:
+            if fixed_withdrawal_percentage is not None:
+                # Fixed percentage withdrawal
+                withdrawal = total_premium_paid * fixed_withdrawal_percentage
+            else:
+                # Medical premium based withdrawal
+                policy_year = year - 1
+                if policy_year < len(premiums_to_use):
+                    withdrawal = premiums_to_use[policy_year]
             
             # Calculate total available value before withdrawal
             special_bonus_before_withdrawal = special_bonus_balance
@@ -215,15 +228,16 @@ def calculate_saving_plan(saving_amount=10000):  # Default 10,000 USD
     savings_list = [saving_amount if year <= 5 else 0 for year in years]  # Only save for first 5 years
     
     saving_plan_df = pd.DataFrame({
+        'Policy Year': range(1, len(ages) + 1),  # Add policy year starting from 1
         'Age': ages,
-        'Savings': savings_list,  # Annual savings amount (only first 5 years)
-        'Total Savings': total_savings,  # Cumulative savings
-        'Withdrawal for Medical Premium': withdrawals,
-        'Notional Amount': notional_amounts,
-        'Guaranteed Cash Value': guaranteed_cash_values,
-        'Reversionary Bonus': reversionary_bonuses,
-        'Special Bonus': special_bonuses,
-        'Surrender Value': surrender_values
+        'Annual Saving (USD)': savings_list,
+        'Total Savings (USD)': total_savings,
+        'Withdrawal for Medical Premium (USD)': withdrawals,
+        'Notional Amount (USD)': notional_amounts,
+        'Guaranteed Cash Value (USD)': guaranteed_cash_values,
+        'Reversionary Bonus (USD)': reversionary_bonuses,
+        'Special Bonus (USD)': special_bonuses,
+        'Surrender Value (USD)': surrender_values
     })
     
     # Round all numeric columns to 0 decimal places
@@ -235,57 +249,59 @@ def calculate_saving_plan(saving_amount=10000):  # Default 10,000 USD
 def display_saving_plan():
     st.header("Our Saving Plan")
     
+    # Add withdrawal scenario selection
+    withdrawal_scenarios = [
+        {"name": "第6年起提款繳交醫保", "year": 6, "age": None, "percentage": None},
+        {"name": "第11年起提款繳交醫保", "year": 11, "age": None, "percentage": None},
+        {"name": "66歲起提款繳交醫保", "year": None, "age": 66, "percentage": None},
+        {"name": "第6年起每年固定5%", "year": 6, "age": None, "percentage": 0.05},
+        {"name": "第6年起每年固定7%", "year": 6, "age": None, "percentage": 0.07}
+    ]
+    
+    selected_scenario = st.selectbox(
+        "選擇提款方案",
+        options=[s["name"] for s in withdrawal_scenarios],
+        index=0
+    )
+    
+    # Get selected scenario details
+    selected_scenario_details = next(s for s in withdrawal_scenarios if s["name"] == selected_scenario)
+    
     # Get saving amount input
     saving_amount = st.number_input(
-        "Annual Saving for First 5 Years",
+        "Annual Saving for First 5 Years (USD)",
         min_value=0,
         value=10000,
         step=1000
     )
     
-    # Calculate saving plan
-    saving_plan_df, insufficient, insufficient_age, insufficient_amount, notional_amount_too_low, notional_amount_too_low_age, notional_amount_too_low_value = calculate_saving_plan(saving_amount)
+    # Calculate saving plan with selected withdrawal scenario
+    saving_plan_df, insufficient, insufficient_age, insufficient_amount, notional_amount_too_low, notional_amount_too_low_age, notional_amount_too_low_value = calculate_saving_plan(
+        saving_amount=saving_amount,
+        withdrawal_start_year=selected_scenario_details["year"] if selected_scenario_details["year"] is not None else 999,
+        withdrawal_start_age=selected_scenario_details["age"],
+        fixed_withdrawal_percentage=selected_scenario_details["percentage"]
+    )
     
     # Display warning if savings are insufficient
     if insufficient:
-        st.warning(f"""
-        Warning: Insufficient Savings
-        
-        The savings plan becomes insufficient at age {insufficient_age}.
-        Amount that couldn't be fully withdrawn: {insufficient_amount:,.0f}
-        
-        Consider increasing your annual saving amount.
-        """)
-        
+        st.warning(f"Warning: Savings will be insufficient at age {insufficient_age}. The surrender value will be {insufficient_amount:,.0f}, which is not enough to cover the withdrawal needed.")
+
     # Display warning if notional amount is too low
     if notional_amount_too_low:
-        st.warning(f"""
-        Warning: Notional Amount Too Low
-        
-        The notional amount drops below the minimum requirement of 3,000 at age {notional_amount_too_low_age}.
-        Notional amount at that age: {notional_amount_too_low_value:,.0f}
-        
-        Consider increasing your annual saving amount to maintain the minimum notional amount requirement.
-        """)
-    
-    # Display saving plan table
-    st.subheader("Saving Plan Table")
-    st.dataframe(
-        saving_plan_df.style.format("{:,.0f}"),
-        hide_index=True
-    )
-    
+        st.warning(f"Warning: The notional amount drops below 3,000 at age {notional_amount_too_low_age}. The notional amount will be {notional_amount_too_low_value:,.0f}. Consider increasing your annual saving amount.")
+
     # Create visualization
-    st.subheader("Annual Saving Plan Breakdown")
+    st.subheader("Annual Saving Plan Breakdown (USD)")
     
     # Annual breakdown chart
     fig = go.Figure()
     
     # Add bars for annual savings only
     fig.add_trace(go.Bar(
-        name='Annual Savings',
         x=saving_plan_df['Age'],
-        y=saving_plan_df['Savings'],
+        y=saving_plan_df['Annual Saving (USD)'],
+        name='Annual Savings (USD)',
         marker_color='#2ecc71',  # Green
         showlegend=True,
         offsetgroup='savings',  # Separate group for savings
@@ -293,12 +309,12 @@ def display_saving_plan():
     ))
     
     # Calculate total annual bonus increment (reversionary + special)
-    total_bonus = saving_plan_df['Reversionary Bonus'] + saving_plan_df['Special Bonus']
+    total_bonus = saving_plan_df['Reversionary Bonus (USD)'] + saving_plan_df['Special Bonus (USD)']
     annual_total_bonus = total_bonus.diff().fillna(total_bonus).round(0)
     
     # Add combined bonus increment
     fig.add_trace(go.Bar(
-        name='Annual Total Bonus',
+        name='Annual Total Bonus (USD)',
         x=saving_plan_df['Age'],
         y=annual_total_bonus,
         marker_color='#3498db',  # Blue
@@ -308,9 +324,9 @@ def display_saving_plan():
     ))
     
     fig.add_trace(go.Bar(
-        name='Medical Premium Withdrawal',
+        name='Medical Premium Withdrawal (USD)',
         x=saving_plan_df['Age'],
-        y=saving_plan_df['Withdrawal for Medical Premium'],
+        y=saving_plan_df['Withdrawal for Medical Premium (USD)'],  
         marker_color='#e74c3c',  # Red
         showlegend=True,
         offsetgroup='withdrawal',  # Separate group for withdrawals
@@ -319,15 +335,15 @@ def display_saving_plan():
     
     # Add line for surrender value
     fig.add_trace(go.Scatter(
-        name='Surrender Value',
+        name='Surrender Value (USD)',
         x=saving_plan_df['Age'],
-        y=saving_plan_df['Surrender Value'],
+        y=saving_plan_df['Surrender Value (USD)'],
         line=dict(color='#2c3e50', width=2),  # Dark blue
         yaxis='y2',
         showlegend=True,
         hovertemplate='Age: %{x}<br>Value: %{y:,.0f}<extra></extra>'
     ))
-    
+
     # Update layout
     fig.update_layout(
         barmode='group',  # Group bars
@@ -354,21 +370,48 @@ def display_saving_plan():
             x=1
         )
     )
+
+    # Add vertical lines every 5 years
+    min_age = min(saving_plan_df['Age'])
+    max_age = max(saving_plan_df['Age'])
     
+    # Calculate ages that are multiples of 5
+    vertical_line_ages = list(range(min_age + (5 - min_age % 5), max_age + 1, 5))
+    
+    for age in vertical_line_ages:
+        fig.add_vline(
+            x=age,
+            line_width=2,
+            line_dash="solid",
+            line_color="rgba(128, 128, 128, 0.8)",
+        )
+
     st.plotly_chart(fig, use_container_width=True)
-    
+
     # Display summary metrics
-    st.subheader("Summary")
+    st.subheader("Summary (USD)")
     
     # Calculate key metrics
-    total_withdrawals = saving_plan_df['Withdrawal for Medical Premium'].sum()
-    total_savings = saving_plan_df['Total Savings'].max()
-    final_surrender_value = saving_plan_df['Surrender Value'].iloc[-1]
+    total_withdrawals = saving_plan_df['Withdrawal for Medical Premium (USD)'].sum()
+    total_savings = saving_plan_df['Total Savings (USD)'].max()
+    final_surrender_value = saving_plan_df['Surrender Value (USD)'].iloc[-1]
     
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric("Total Savings", f"{total_savings:,.0f}")
+        st.metric("Total Savings (USD)", f"{total_savings:,.0f}")
     with col2:
-        st.metric("Total Withdrawals", f"{total_withdrawals:,.0f}")
+        st.metric("Total Withdrawals (USD)", f"{total_withdrawals:,.0f}")
     with col3:
-        st.metric("Final Surrender Value", f"{final_surrender_value:,.0f}")
+        st.metric("Final Surrender Value (USD)", f"{final_surrender_value:,.0f}")
+
+    # Display annual breakdown table
+    st.subheader("Annual Breakdown (USD)")
+    
+    # Format numeric columns
+    formatted_df = saving_plan_df.copy()
+    numeric_columns = ['Annual Saving (USD)', 'Withdrawal for Medical Premium (USD)', 'Total Savings (USD)', 'Surrender Value (USD)', 'Reversionary Bonus (USD)', 'Special Bonus (USD)']
+    for col in numeric_columns:
+        formatted_df[col] = formatted_df[col].apply(lambda x: '{:,.0f}'.format(x))
+    
+    # Display the table with full width
+    st.dataframe(formatted_df.set_index('Policy Year'), use_container_width=True)  # Set Policy Year as index

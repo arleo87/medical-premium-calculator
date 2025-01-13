@@ -275,7 +275,10 @@ def main():
                 st.session_state.custom_plan = edited_df
             
             # User inputs
-            gender = st.selectbox("", ["Male ", "Female "])
+            st.subheader("Gender")
+            gender = st.radio("", ["Male", "Female"])
+            
+            st.subheader("Age")
             current_age = st.number_input("", min_value=0, max_value=99, value=30)
             
             # Select dataframe based on gender
@@ -285,17 +288,22 @@ def main():
             plan_columns = [col for col in df.columns if col not in ['Age']] + ['Other']
             
             # Plan selection
-            plan1 = st.selectbox(" 1", plan_columns)
-            plan2 = st.selectbox(" 2 (Optional)", ["None"] + plan_columns)
+            st.subheader("Plan 1")
+            plan1 = st.selectbox("", plan_columns)
+            st.subheader("Plan 2 (Optional)")
+            plan2 = st.selectbox("", ["None"] + plan_columns)
             
             # Inflation rate
-            inflation_rate = st.slider(" (%)", min_value=0.0, max_value=5.0, value=0.0, step=0.1)
+            st.subheader("Inflation")
+            inflation_rate = st.slider("", min_value=0.0, max_value=5.0, value=0.0, step=0.1)
             
             # Currency selection
+            st.subheader("Currency")
             currency = st.selectbox("", ["HKD ", "USD "])
             exchange_rate = 7.85
             if currency == "USD ":
-                exchange_rate = st.number_input(" (HKD to USD)", min_value=1.0, value=7.85, step=0.01)
+                st.subheader("Exchange Rate (HKD to USD)")
+                exchange_rate = st.number_input("", min_value=1.0, value=7.85, step=0.01)
             
             # Store currency and exchange rate in session state
             st.session_state['currency'] = currency
