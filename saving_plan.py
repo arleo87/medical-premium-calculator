@@ -3,6 +3,8 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 
+# Clear function caches
+@st.cache_data(ttl=0)  # Set TTL to 0 to prevent caching
 def calculate_saving_plan(saving_amount=10000, withdrawal_start_year=6, withdrawal_start_age=None, fixed_withdrawal_percentage=None):  
     # Read the logic CSV file for bonus calculations
     logic_df = pd.read_csv('logic.csv')
