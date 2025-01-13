@@ -6,6 +6,7 @@ from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
 import io
+from saving_plan import display_saving_plan
 
 # Constants for age milestones
 AGE_MILESTONES = [65, 75, 85, 99]
@@ -111,8 +112,8 @@ def calculate_savings_plan(annual_saving, current_age, premiums, inflated_premiu
         # Calculate available balance before withdrawals
         available_balance = savings + interest + saving_this_year
         
-        # Calculate withdrawals
-        premium_withdrawal = premiums_to_use[year]
+        # Calculate withdrawals (only after year 5)
+        premium_withdrawal = premiums_to_use[year] if year >= 5 else 0
         age_65_withdrawal = withdrawal_at_65 if age == 65 else 0
         total_withdrawal = premium_withdrawal + age_65_withdrawal
         
@@ -186,7 +187,11 @@ def calculate_total_premium_to_age(premiums, current_age, target_age):
 
 # Main application
 def main():
-    st.title("Medical Premium Calculator ")
+    st.title("Medical Insurance Planning Tool")
+    
+    # Initialize session state for premium if not exists
+    if 'medical_premium' not in st.session_state:
+        st.session_state.medical_premium = 0
     
     # Add CSS for fixed height headers and tabs
     st.markdown("""
@@ -242,7 +247,7 @@ def main():
         st.session_state.custom_plan = create_empty_premium_table()
 
     # Main content area with tabs
-    tab1, tab2 = st.tabs(["Premium Calculator ", "Medical Financing "])
+    tab1, tab2, tab3 = st.tabs(["Premium Calculator ", "Medical Financing ", "Our Saving Plan"])
     
     with tab1:
         # Move all inputs to sidebar
@@ -283,7 +288,11 @@ def main():
             exchange_rate = 7.85
             if currency == "USD ":
                 exchange_rate = st.number_input(" (HKD to USD)", min_value=1.0, value=7.85, step=0.01)
-
+            
+            # Store currency and exchange rate in session state
+            st.session_state['currency'] = currency
+            st.session_state['exchange_rate'] = exchange_rate
+        
         # Get maximum age from data
         max_age = len(df)
         
@@ -305,6 +314,39 @@ def main():
         plan1_inflated = calculate_inflated_premiums(plan1_premiums, inflation_rate, len(plan1_premiums))
         if plan2 != "None":
             plan2_inflated = calculate_inflated_premiums(plan2_premiums, inflation_rate, len(plan2_premiums))
+
+        # Store premium data in session state for both medical financing and saving plan
+        if plan2 != "None":
+            # Combine premiums from both plans
+            min_length = min(len(plan1_premiums), len(plan2_premiums))
+            combined_premiums = [plan1_premiums[i] + plan2_premiums[i] for i in range(min_length)]
+            if inflation_rate > 0:
+                min_length = min(len(plan1_inflated), len(plan2_inflated))
+                combined_inflated = [plan1_inflated[i] + plan2_inflated[i] for i in range(min_length)]
+            else:
+                combined_inflated = None
+            
+            # Store combined premiums for both tabs
+            st.session_state['premium_data'] = {
+                'premiums': combined_premiums,
+                'inflated_premiums': combined_inflated,
+                'current_age': current_age,
+                'inflation_rate': inflation_rate
+            }
+        else:
+            # Store only plan 1 premiums
+            st.session_state['premium_data'] = {
+                'premiums': plan1_premiums,
+                'inflated_premiums': plan1_inflated if inflation_rate > 0 else None,
+                'current_age': current_age,
+                'inflation_rate': inflation_rate
+            }
+
+        # Store first year premium for display
+        if plan1_premiums:
+            st.session_state.medical_premium = plan1_premiums[0]  # Store the first year's premium
+            if plan2 != "None" and plan2_premiums:
+                st.session_state.medical_premium += plan2_premiums[0]  # Add second plan's premium if exists
 
         # Create three columns for results
         col1, col2, col3 = st.columns(3)
@@ -556,7 +598,7 @@ def main():
         """, unsafe_allow_html=True)
         
         # Set default saving amount based on currency
-        default_saving = 10000 if currency == "USD " else 80000
+        default_saving = 10000 if st.session_state['currency'] == "USD " else 80000
         
         saving_col1, saving_col2 = st.columns(2)
         with saving_col1:
@@ -568,7 +610,7 @@ def main():
                 key='annual_saving'
             )
             
-            st.write(f"Total Savings after 5 years: {currency.split()[0]} {annual_saving * 5:,.0f}")
+            st.write(f"Total Savings after 5 years: {st.session_state['currency'].split()[0]} {annual_saving * 5:,.0f}")
             
             withdrawal_at_65 = st.number_input(
                 "Once off withdrawal at 65",
@@ -586,211 +628,209 @@ def main():
             - Annual withdrawal for premium payment from Year 6
             """)
         
+        # Determine which premiums to use
+        if 'premium_data' in st.session_state:
+            premiums_to_use = st.session_state['premium_data']['premiums']
+            inflated_premiums = st.session_state['premium_data']['inflated_premiums']
+            current_age = st.session_state['premium_data']['current_age']
+            inflation_rate = st.session_state['premium_data']['inflation_rate']
+        else:
+            st.error("Error: Premium data not found in session state.")
+            return
+
         # Calculate savings plan
-        if plan1 != "None":
-            # Determine which premiums to use
-            if plan2 != "None":
-                # Combine premiums from both plans
-                min_length = min(len(plan1_premiums), len(plan2_premiums))
-                combined_premiums = [plan1_premiums[i] + plan2_premiums[i] for i in range(min_length)]
-                if inflation_rate > 0:
-                    combined_inflated = [plan1_inflated[i] + plan2_inflated[i] for i in range(min_length)]
-                premiums_to_use = combined_premiums
-                inflated_premiums = combined_inflated if inflation_rate > 0 else None
-            else:
-                # Use only plan 1
-                premiums_to_use = plan1_premiums
-                inflated_premiums = plan1_inflated if inflation_rate > 0 else None
-            
-            total_savings = annual_saving * 5
-            
-            # Calculate minimum annual savings needed
-            min_savings = calculate_minimum_savings(current_age, premiums_to_use, inflated_premiums, 
-                                                 withdrawal_at_65=withdrawal_at_65)
-            
-            # Calculate savings plan
-            savings_results, insufficient, insufficient_age, insufficient_amount = calculate_savings_plan(annual_saving, current_age, premiums_to_use, 
+        total_savings = annual_saving * 5
+        
+        # Calculate minimum annual savings needed
+        min_savings = calculate_minimum_savings(current_age, premiums_to_use, inflated_premiums, 
+                                             withdrawal_at_65=withdrawal_at_65)
+        
+        # Calculate savings plan
+        savings_results, insufficient, insufficient_age, insufficient_amount = calculate_savings_plan(annual_saving, current_age, premiums_to_use, 
                                                                inflated_premiums,
                                                                withdrawal_at_65=withdrawal_at_65)
+        
+        # Display warning if savings are insufficient
+        if insufficient:
+            # Calculate minimum required savings
+            min_required_savings = calculate_minimum_savings(
+                current_age,
+                premiums_to_use,
+                inflated_premiums,
+                withdrawal_at_65=withdrawal_at_65
+            )
             
-            # Display warning if savings are insufficient
-            if insufficient:
-                # Calculate minimum required savings
-                min_required_savings = calculate_minimum_savings(
-                    current_age,
-                    premiums_to_use,
-                    inflated_premiums,
-                    withdrawal_at_65=withdrawal_at_65
-                )
-                
-                st.error(f"""
-                Warning: Insufficient Savings
-                
-                The proposed saving amount of {currency.split()[0]} {annual_saving:,.0f} per year is not sufficient 
-                to cover the entire medical plan.
-                
-                Minimum required annual savings: {currency.split()[0]} {min_required_savings:,.0f}
-                Additional savings needed: {currency.split()[0]} {(min_required_savings - annual_saving):,.0f} per year
-                Insufficient at age: {insufficient_age}
-                Amount that couldn't be fully withdrawn: {currency.split()[0]} {insufficient_amount:,.0f}
-                """)
+            st.error(f"""
+            Warning: Insufficient Savings
             
-            # Calculate key metrics
-            total_savings = annual_saving * 5
-            total_interest = sum([float(result['Interest']) for result in savings_results])
-            total_premiums = sum([float(result['Premium']) for result in savings_results])
-            final_balance = float(savings_results[-1]['End'])
+            The proposed saving amount of {st.session_state['currency'].split()[0]} {annual_saving:,.0f} per year is not sufficient 
+            to cover the entire medical plan.
             
-            # Display summary metrics
-            st.subheader("Summary")
-            metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
-            
-            with metric_col1:
-                st.metric("Total Savings ", 
-                         f"{currency.split()[0]} {total_savings:,.0f}")
-            
-            with metric_col2:
-                st.metric("Total Interest ",
-                         f"{currency.split()[0]} {total_interest:,.0f}")
-            
-            with metric_col3:
-                st.metric("Total Withdrawal for Medical ",
-                         f"{currency.split()[0]} {total_premiums:,.0f}")
-            
-            with metric_col4:
-                st.metric("Final Balance ",
-                         f"{currency.split()[0]} {final_balance:,.0f}")
+            Minimum required annual savings: {st.session_state['currency'].split()[0]} {min_required_savings:,.0f}
+            Additional savings needed: {st.session_state['currency'].split()[0]} {(min_required_savings - annual_saving):,.0f} per year
+            Insufficient at age: {insufficient_age}
+            Amount that couldn't be fully withdrawn: {st.session_state['currency'].split()[0]} {insufficient_amount:,.0f}
+            """)
+        
+        # Calculate key metrics
+        total_savings = annual_saving * 5
+        total_interest = sum([float(result['Interest']) for result in savings_results])
+        total_premiums = sum([float(result['Premium']) for result in savings_results])
+        final_balance = float(savings_results[-1]['End'])
+        
+        # Display summary metrics
+        st.subheader("Summary")
+        metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
+        
+        with metric_col1:
+            st.metric("Total Savings ", 
+                     f"{st.session_state['currency'].split()[0]} {total_savings:,.0f}")
+        
+        with metric_col2:
+            st.metric("Total Interest ",
+                     f"{st.session_state['currency'].split()[0]} {total_interest:,.0f}")
+        
+        with metric_col3:
+            st.metric("Total Withdrawal for Medical ",
+                     f"{st.session_state['currency'].split()[0]} {total_premiums:,.0f}")
+        
+        with metric_col4:
+            st.metric("Final Balance ",
+                     f"{st.session_state['currency'].split()[0]} {final_balance:,.0f}")
 
-            # Create visualization of savings plan
-            st.subheader("Savings Plan Visualization")
-            
-            # Prepare data for visualization
-            fig = go.Figure()
-            
-            # Add Annual Savings bars (green)
-            fig.add_trace(go.Bar(
-                x=[str(age) for age in range(current_age, current_age + len(savings_results))],
-                y=[float(s.replace(currency.split()[0], '').replace(',', '')) for s in [f"{currency.split()[0]} {result['Saving']:,.0f}" for result in savings_results]],
-                name='Annual Savings',
-                marker_color='rgba(75, 192, 75, 0.7)',  # Green
-                hovertemplate=currency + ' %{y:,.0f}<br>Age: %{x}<extra></extra>'
-            ))
-            
-            # Add Interest Earned bars (blue)
-            fig.add_trace(go.Bar(
-                x=[str(age) for age in range(current_age, current_age + len(savings_results))],
-                y=[float(i.replace(currency.split()[0], '').replace(',', '')) for i in [f"{currency.split()[0]} {result['Interest']:,.0f}" for result in savings_results]],
-                name='Interest Earned',
-                marker_color='rgba(66, 133, 244, 0.7)',  # Blue
-                hovertemplate=currency + ' %{y:,.0f}<br>Age: %{x}<extra></extra>'
-            ))
-            
-            # Add Premium Withdrawal bars (red)
-            fig.add_trace(go.Bar(
-                x=[str(age) for age in range(current_age, current_age + len(savings_results))],
-                y=[float(p.replace(currency.split()[0], '').replace(',', '')) for p in [f"{currency.split()[0]} {result['Premium']:,.0f}" for result in savings_results]],
-                name='Withdrawal for Medical Premium',
-                marker_color='rgba(234, 67, 53, 0.7)',  # Red
-                hovertemplate=currency + ' %{y:,.0f}<br>Age: %{x}<extra></extra>'
-            ))
-            
-            # Add Age 65 Withdrawal bars (purple)
-            fig.add_trace(go.Bar(
-                x=[str(age) for age in range(current_age, current_age + len(savings_results))],
-                y=[float(a.replace(currency.split()[0], '').replace(',', '')) for a in [f"{currency.split()[0]} {result['Age65']:,.0f}" for result in savings_results]],
-                name='Age 65 Withdrawal',
-                marker_color='rgba(156, 39, 176, 0.7)',  # Purple
-                hovertemplate=currency + ' %{y:,.0f}<br>Age: %{x}<extra></extra>'
-            ))
-            
-            # Add Balance line (black) on secondary y-axis
-            fig.add_trace(go.Scatter(
-                x=[str(age) for age in range(current_age, current_age + len(savings_results))],
-                y=[float(b.replace(currency.split()[0], '').replace(',', '')) for b in [f"{currency.split()[0]} {result['End']:,.0f}" for result in savings_results]],
-                name='Balance',
-                line=dict(color='rgba(0, 0, 0, 1)', width=3),  # Black
-                yaxis='y2',
-                hovertemplate=currency + ' %{y:,.0f}<br>Age: %{x}<extra></extra>'
-            ))
-            
-            # Update layout with dual y-axis
-            fig.update_layout(
-                title={
-                    'text': 'Savings Plan Over Time',
-                    'y': 0.95,
-                    'x': 0.5,
-                    'xanchor': 'center',
-                    'yanchor': 'top'
-                },
-                xaxis_title='Age',
-                yaxis_title=f'Amount ({currency})',
-                yaxis2=dict(
-                    title=f'Balance ({currency})',
-                    overlaying='y',
-                    side='right'
-                ),
-                barmode='group',
-                bargap=0.15,
-                bargroupgap=0.1,
-                hovermode='x unified',
-                showlegend=True,
-                legend=dict(
-                    yanchor="top",
-                    y=0.99,
-                    xanchor="right",
-                    x=0.99,
-                    bgcolor='rgba(255, 255, 255, 0.8)'
-                ),
-                height=500,
-                margin=dict(l=60, r=60, t=50, b=50)
-            )
-            
-            # Add a horizontal line at y=0
-            fig.add_hline(y=0, line_width=1, line_color="black", line_dash="dash")
-            
-            # Display the figure
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # Create detailed breakdown table
-            df_savings = pd.DataFrame(savings_results)
-            
-            # Convert Age to strings to ensure left alignment
-            df_savings['Age'] = df_savings['Age'].astype(str)
-            
-            # Format currency values for display
-            for col in ['Start', 'Interest', 'Saving', 'Premium', 'Age65', 'End']:
-                df_savings[col] = df_savings[col].apply(lambda x: f"{currency.split()[0]} {x:,.0f}")
-            
-            # Add CSS for table alignment
-            st.markdown("""
-            <style>
-            div[data-testid="stDataFrame"] div[data-testid="stTable"] {
-                text-align: left !important;
+        # Create visualization of savings plan
+        st.subheader("Savings Plan Visualization")
+        
+        # Prepare data for visualization
+        fig = go.Figure()
+        
+        # Add Annual Savings bars (green)
+        fig.add_trace(go.Bar(
+            x=[str(age) for age in range(current_age, current_age + len(savings_results))],
+            y=[float(s.replace(st.session_state['currency'].split()[0], '').replace(',', '')) for s in [f"{st.session_state['currency'].split()[0]} {result['Saving']:,.0f}" for result in savings_results]],
+            name='Annual Savings',
+            marker_color='rgba(75, 192, 75, 0.7)',  # Green
+            hovertemplate=st.session_state['currency'] + ' %{y:,.0f}<br>Age: %{x}<extra></extra>'
+        ))
+        
+        # Add Interest Earned bars (blue)
+        fig.add_trace(go.Bar(
+            x=[str(age) for age in range(current_age, current_age + len(savings_results))],
+            y=[float(i.replace(st.session_state['currency'].split()[0], '').replace(',', '')) for i in [f"{st.session_state['currency'].split()[0]} {result['Interest']:,.0f}" for result in savings_results]],
+            name='Interest Earned',
+            marker_color='rgba(66, 133, 244, 0.7)',  # Blue
+            hovertemplate=st.session_state['currency'] + ' %{y:,.0f}<br>Age: %{x}<extra></extra>'
+        ))
+        
+        # Add Premium Withdrawal bars (red)
+        fig.add_trace(go.Bar(
+            x=[str(age) for age in range(current_age, current_age + len(savings_results))],
+            y=[float(p.replace(st.session_state['currency'].split()[0], '').replace(',', '')) for p in [f"{st.session_state['currency'].split()[0]} {result['Premium']:,.0f}" for result in savings_results]],
+            name='Withdrawal for Medical Premium',
+            marker_color='rgba(234, 67, 53, 0.7)',  # Red
+            hovertemplate=st.session_state['currency'] + ' %{y:,.0f}<br>Age: %{x}<extra></extra>'
+        ))
+        
+        # Add Age 65 Withdrawal bars (purple)
+        fig.add_trace(go.Bar(
+            x=[str(age) for age in range(current_age, current_age + len(savings_results))],
+            y=[float(a.replace(st.session_state['currency'].split()[0], '').replace(',', '')) for a in [f"{st.session_state['currency'].split()[0]} {result['Age65']:,.0f}" for result in savings_results]],
+            name='Age 65 Withdrawal',
+            marker_color='rgba(156, 39, 176, 0.7)',  # Purple
+            hovertemplate=st.session_state['currency'] + ' %{y:,.0f}<br>Age: %{x}<extra></extra>'
+        ))
+        
+        # Add Balance line (black) on secondary y-axis
+        fig.add_trace(go.Scatter(
+            x=[str(age) for age in range(current_age, current_age + len(savings_results))],
+            y=[float(b.replace(st.session_state['currency'].split()[0], '').replace(',', '')) for b in [f"{st.session_state['currency'].split()[0]} {result['End']:,.0f}" for result in savings_results]],
+            name='Balance',
+            line=dict(color='rgba(0, 0, 0, 1)', width=3),  # Black
+            yaxis='y2',
+            hovertemplate=st.session_state['currency'] + ' %{y:,.0f}<br>Age: %{x}<extra></extra>'
+        ))
+        
+        # Update layout with dual y-axis
+        fig.update_layout(
+            title={
+                'text': 'Savings Plan Over Time',
+                'y': 0.95,
+                'x': 0.5,
+                'xanchor': 'center',
+                'yanchor': 'top'
+            },
+            xaxis_title='Age',
+            yaxis_title=f'Amount ({st.session_state["currency"]})',
+            yaxis2=dict(
+                title=f'Balance ({st.session_state["currency"]})',
+                overlaying='y',
+                side='right'
+            ),
+            barmode='group',
+            bargap=0.15,
+            bargroupgap=0.1,
+            hovermode='x unified',
+            showlegend=True,
+            legend=dict(
+                yanchor="top",
+                y=0.99,
+                xanchor="right",
+                x=0.99,
+                bgcolor='rgba(255, 255, 255, 0.8)'
+            ),
+            height=500,
+            margin=dict(l=60, r=60, t=50, b=50)
+        )
+        
+        # Add a horizontal line at y=0
+        fig.add_hline(y=0, line_width=1, line_color="black", line_dash="dash")
+        
+        # Display the figure
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Create detailed breakdown table
+        df_savings = pd.DataFrame(savings_results)
+        
+        # Convert Age to strings to ensure left alignment
+        df_savings['Age'] = df_savings['Age'].astype(str)
+        
+        # Format currency values for display
+        for col in ['Start', 'Interest', 'Saving', 'Premium', 'Age65', 'End']:
+            df_savings[col] = df_savings[col].apply(lambda x: f"{st.session_state['currency'].split()[0]} {x:,.0f}")
+        
+        # Add CSS for table alignment
+        st.markdown("""
+        <style>
+        div[data-testid="stDataFrame"] div[data-testid="stTable"] {
+            text-align: left !important;
+        }
+        div[data-testid="stDataFrame"] td, 
+        div[data-testid="stDataFrame"] th {
+            text-align: left !important;
+            white-space: nowrap !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        # Display results
+        st.subheader("Annual Breakdown")
+        st.dataframe(
+            df_savings,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                'Age': st.column_config.TextColumn('Age ', help="Current age"),
+                'Start': st.column_config.TextColumn('Start ', help="Year-start balance"),
+                'Interest': st.column_config.TextColumn('Interest ', help="Interest earned during the year"),
+                'Saving': st.column_config.TextColumn('Saving ', help="Amount saved during the year"),
+                'Premium': st.column_config.TextColumn('Withdrawal for Medical Premium ', help="Premium paid during the year"),
+                'Age65': st.column_config.TextColumn('Age 65 Withdrawal ', help="One-time withdrawal at age 65"),
+                'End': st.column_config.TextColumn('End ', help="Year-end balance")
             }
-            div[data-testid="stDataFrame"] td, 
-            div[data-testid="stDataFrame"] th {
-                text-align: left !important;
-                white-space: nowrap !important;
-            }
-            </style>
-            """, unsafe_allow_html=True)
-            
-            # Display results
-            st.subheader("Annual Breakdown")
-            st.dataframe(
-                df_savings,
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    'Age': st.column_config.TextColumn('Age ', help="Current age"),
-                    'Start': st.column_config.TextColumn('Start ', help="Year-start balance"),
-                    'Interest': st.column_config.TextColumn('Interest ', help="Interest earned during the year"),
-                    'Saving': st.column_config.TextColumn('Saving ', help="Amount saved during the year"),
-                    'Premium': st.column_config.TextColumn('Withdrawal for Medical Premium ', help="Premium paid during the year"),
-                    'Age65': st.column_config.TextColumn('Age 65 Withdrawal ', help="One-time withdrawal at age 65"),
-                    'End': st.column_config.TextColumn('End ', help="Year-end balance")
-                }
-            )
+        )
+
+    with tab3:
+        display_saving_plan()
 
 if __name__ == "__main__":
     main()
