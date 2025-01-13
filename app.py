@@ -1,12 +1,20 @@
 import streamlit as st
 import pandas as pd
-import plotly.graph_objects as go
 import numpy as np
+import plotly.graph_objects as go
+from datetime import datetime, timedelta
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
 import io
 from saving_plan import display_saving_plan
+
+# Clear cache and session state
+if 'cache_cleared' not in st.session_state:
+    st.cache_data.clear()
+    st.cache_resource.clear()
+    st.session_state.clear()
+    st.session_state.cache_cleared = True
 
 # Constants for age milestones
 AGE_MILESTONES = [65, 75, 85, 99]
