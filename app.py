@@ -193,6 +193,36 @@ def calculate_total_premium_to_age(premiums, current_age, target_age):
     end_index = min(target_age - current_age, len(premiums))
     return sum(premiums[:end_index])
 
+# Create premium table for specific age ranges
+def create_premium_table(premiums, inflated_premiums=None):
+    # Calculate total premiums for different age ranges
+    current_age = st.session_state.get('current_age', 30)
+    
+    # Define target ages
+    target_ages = [65, 75, 85, 99]
+    
+    # Calculate totals for each range
+    data = []
+    for target_age in target_ages:
+        # Calculate index range (add 1 to include target age)
+        end_index = min(target_age - current_age + 1, len(premiums))
+        if end_index <= 0:
+            continue
+            
+        original_total = sum(premiums[:end_index])
+        row = {
+            'Age Range': f"From age {current_age} to {target_age}",
+            'Original Premium Total': f"{original_total:,.0f}"
+        }
+        
+        if inflated_premiums:
+            inflated_total = sum(inflated_premiums[:end_index])
+            row['Inflated Premium Total'] = f"{inflated_total:,.0f}"
+            
+        data.append(row)
+    
+    return pd.DataFrame(data)
+
 # Main application
 def main():
     st.title("Medical Insurance Planning Tool")
@@ -400,36 +430,6 @@ def main():
             # Total Premium Calculations
             st.subheader("總保費")
             
-            def create_premium_table(premiums, inflated_premiums=None):
-                """Create a DataFrame for premium totals"""
-                age_ranges = [
-                    f"{current_age} to 65",
-                    f"{current_age} to 75",
-                    f"{current_age} to 85",
-                    f"{current_age} to 99"
-                ]
-                
-                data = {
-                    'Age Range': age_ranges,
-                    f'Current Premium ({currency.strip()})': [
-                        f"{calculate_total_premium_to_age(premiums, current_age, 65):,.0f}",
-                        f"{calculate_total_premium_to_age(premiums, current_age, 75):,.0f}",
-                        f"{calculate_total_premium_to_age(premiums, current_age, 85):,.0f}",
-                        f"{calculate_total_premium_to_age(premiums, current_age, 99):,.0f}"
-                    ]
-                }
-                
-                if inflated_premiums is not None:
-                    data[f'Projected Premium ({currency.strip()}) ({inflation_rate}% inflation)'] = [
-                        f"{calculate_total_premium_to_age(inflated_premiums, current_age, 65):,.0f}",
-                        f"{calculate_total_premium_to_age(inflated_premiums, current_age, 75):,.0f}",
-                        f"{calculate_total_premium_to_age(inflated_premiums, current_age, 85):,.0f}",
-                        f"{calculate_total_premium_to_age(inflated_premiums, current_age, 99):,.0f}"
-                    ]
-                
-                return pd.DataFrame(data)
-            
-            # Plan 1 Premium Table
             df_plan1 = create_premium_table(plan1_premiums, plan1_inflated if inflation_rate > 0 else None)
             st.dataframe(df_plan1, use_container_width=True, hide_index=True)
 
