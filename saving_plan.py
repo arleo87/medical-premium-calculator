@@ -364,7 +364,6 @@ def display_saving_plan():
     total_withdrawals = saving_plan_df['Withdrawal for Medical Premium'].sum()
     total_savings = saving_plan_df['Total Savings'].max()
     final_surrender_value = saving_plan_df['Surrender Value'].iloc[-1]
-    medical_premium = abs(saving_plan_df['Withdrawal for Medical Premium'].iloc[-1]) if len(saving_plan_df) > 0 else 0
     
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -373,14 +372,3 @@ def display_saving_plan():
         st.metric("Total Withdrawals", f"{total_withdrawals:,.0f}")
     with col3:
         st.metric("Final Surrender Value", f"{final_surrender_value:,.0f}")
-    
-    # Show how the saving plan can help with medical expenses
-    st.subheader("Medical Expense Coverage")
-    
-    if medical_premium > 0:
-        years_covered = total_withdrawals / medical_premium if medical_premium > 0 else 0
-        st.write(f"Based on your medical premium of {medical_premium:,.0f} per year:")
-        st.write(f"- This saving plan can cover approximately {years_covered:.1f} years of medical premiums")
-        st.write(f"- After all withdrawals, you still have a surrender value of {final_surrender_value:,.0f}")
-    else:
-        st.write("Please set up your medical plan first to see how this saving plan can help cover your medical expenses.")
