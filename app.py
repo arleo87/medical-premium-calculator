@@ -195,8 +195,12 @@ def calculate_total_premium_to_age(premiums, current_age, target_age):
 
 # Create premium table for specific age ranges
 def create_premium_table(premiums, inflated_premiums=None):
-    # Calculate total premiums for different age ranges
-    current_age = st.session_state.get('current_age', 30)
+    # Get current age from premium data
+    if 'premium_data' not in st.session_state:
+        st.error("Error: Premium data not found. Please select plans in the Premium Calculator tab first.")
+        return pd.DataFrame()
+        
+    current_age = st.session_state['premium_data']['current_age']
     
     # Define target ages
     target_ages = [65, 75, 85, 99]
@@ -204,19 +208,25 @@ def create_premium_table(premiums, inflated_premiums=None):
     # Calculate totals for each range
     data = []
     for target_age in target_ages:
-        # Calculate index range (add 1 to include target age)
-        end_index = min(target_age - current_age + 1, len(premiums))
-        if end_index <= 0:
+        # Calculate number of years to include (including both current age and target age)
+        years_needed = target_age - current_age + 1
+        
+        # Skip if target age is less than current age
+        if years_needed <= 0:
             continue
             
-        original_total = sum(premiums[:end_index])
+        # Get the premiums for this range
+        range_premiums = premiums[:years_needed]
+        original_total = sum(range_premiums)
+        
         row = {
             'Age Range': f"From age {current_age} to {target_age}",
             'Original Premium Total': f"{original_total:,.0f}"
         }
         
         if inflated_premiums:
-            inflated_total = sum(inflated_premiums[:end_index])
+            range_inflated = inflated_premiums[:years_needed]
+            inflated_total = sum(range_inflated)
             row['Inflated Premium Total'] = f"{inflated_total:,.0f}"
             
         data.append(row)
