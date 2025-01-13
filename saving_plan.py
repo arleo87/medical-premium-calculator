@@ -411,9 +411,30 @@ def display_saving_plan():
     
     # Format numeric columns
     formatted_df = saving_plan_df.copy()
-    numeric_columns = ['Annual Saving (USD)', 'Withdrawal for Medical Premium (USD)', 'Total Savings (USD)', 'Surrender Value (USD)', 'Reversionary Bonus (USD)', 'Special Bonus (USD)']
+    numeric_columns = [
+        'Annual Saving (USD)', 
+        'Withdrawal for Medical Premium (USD)', 
+        'Total Savings (USD)',
+        'Notional Amount (USD)',
+        'Guaranteed Cash Value (USD)', 
+        'Reversionary Bonus (USD)', 
+        'Special Bonus (USD)',
+        'Surrender Value (USD)'
+    ]
+    
+    # Format numbers with USD and align left
     for col in numeric_columns:
-        formatted_df[col] = formatted_df[col].apply(lambda x: '{:,.0f}'.format(x))
+        formatted_df[col] = formatted_df[col].apply(lambda x: f"USD {x:,.0f}")
+    
+    # Set index first
+    formatted_df = formatted_df.set_index('Policy Year')
+    
+    # Create a styled dataframe with left alignment for all cells
+    styled_df = formatted_df.style.set_properties(**{
+        'text-align': 'left',
+        'white-space': 'pre',
+        'padding-left': '10px'  # Add some padding for better readability
+    })
     
     # Display the table with full width
-    st.dataframe(formatted_df.set_index('Policy Year'), use_container_width=True)  # Set Policy Year as index
+    st.dataframe(styled_df, use_container_width=True)
